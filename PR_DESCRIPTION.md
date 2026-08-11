@@ -36,59 +36,65 @@ an optional operator-supplied restart command. This only depends on a
 POSIX shell and `cat`/`chmod`/`mkdir` being present, which is a safe
 assumption for busybox-class embedded Linux.
 
-## Important caveat — please verify before merging
+## Hardware validation (2026-08-11)
 
 JetKVM's TLS certificate handling is **not part of its stable/documented
-API**. Based on public research (JetKVM's GitHub repo/discussions/issues,
-see below) at the time of writing:
+API**, so the original draft of this PR was based on public research only
+(JetKVM's GitHub repo/discussions/issues, see below) and flagged that as
+the biggest open question before merging. That has since been tested
+directly against a real JetKVM device over SSH:
 
-- Custom TLS certificates are stored under `/userdata/jetkvm/tls` via an
-  internal `CertStore`, in PEM format, referenced internally as
-  `"user-defined"`.
-- Applying a new certificate currently requires a restart of JetKVM's
-  HTTPS listener; there is no documented hot-reload.
-- As of GitHub issue
-  [jetkvm/kvm#1240](https://github.com/jetkvm/kvm/issues/1240), JetKVM
-  does **not yet** expose a documented CLI/API to apply a certificate
-  without going through its web UI — users currently report only being
-  able to apply a cert by pasting it into the GUI.
+- `/userdata/jetkvm/tls` **is** the correct storage directory for
+  "Custom" TLS mode — confirmed.
+- The filenames were **wrong** in the original draft and have been
+  corrected. JetKVM's "Custom" TLS mode reads `user-defined.crt` /
+  `user-defined.key` from that directory — not `fullchain.pem` /
+  `privkey.pem` as first guessed. (Other filenames present in that same
+  directory, e.g. `jetkvm.crt`, back JetKVM's other, non-custom TLS
+  modes and are unrelated to "Custom" mode.) The script's defaults and
+  the model/dialog help text now use the confirmed names.
+- There is indeed no hot-reload: the device's own certificate-apply
+  script (`update-user-defined.sh`, shipped in that same directory) does
+  a full `sync && reboot` after writing the cert/key. The post-upload
+  command field's help text now states this explicitly. The field is
+  still left **blank by default** rather than auto-rebooting, since a
+  reboot briefly drops any active KVM-over-IP session — set it to
+  `reboot` yourself if you want the new certificate applied
+  automatically right after upload.
+- The remote write was changed from truncating the live `cat > file`
+  target in place to staging both files under temporary names, chmod'ing
+  them, and only `mv`-ing them into their final names (an atomic rename)
+  once both are fully written — so a dropped connection or a failed
+  write can no longer leave the device with a truncated or mismatched
+  cert/key pair for its own HTTPS listener. This exact write sequence
+  (staging, chmod, atomic rename, cleanup) was validated end-to-end
+  against the device using throwaway filenames, so the device's real
+  certificate files were never touched by this testing.
 
-Given that, this automation deliberately:
-- Defaults the remote path to `/userdata/jetkvm/tls` (documented as the
-  storage directory for custom certs) but makes it fully configurable,
-  with a help-text warning to verify it against the installed firmware
-  version.
-- Leaves the post-upload "restart command" field blank by default rather
-  than guessing at an undocumented reload mechanism, so the plugin never
-  silently no-ops or does something destructive on an assumption that
-  turns out to be wrong.
+No further changes to the remote path/filenames are expected to be
+needed, though — as the help text still notes — none of this is
+documented/stable JetKVM API, so it's worth a spot-check after any
+JetKVM firmware upgrade.
 
-**Recommendation before merging:** verify against a real JetKVM device
-(`ssh root@<device> ls -la /userdata/jetkvm/tls` after enabling "Custom"
-TLS mode once via the GUI) that this is indeed where/how a firmware
-picks up files dropped at that path, and adjust the default path/restart
-command guidance in the field help text and `pkg-descr` changelog entry
-if needed. I was not able to test against physical JetKVM hardware in
-this environment.
-
-## Code review notes (2026-08-10)
+## Code review notes (2026-08-10, updated 2026-08-11)
 
 A follow-up review against a live clone of `opnsense/plugins` `master`
-turned up one design point worth the maintainer's attention, plus
-confirmation that several other things some review candidates might
-flag are actually inherited, consistent behavior from the sibling
-`upload_sftp.php` / `remote_ssh_identity_type` automations (not new
-issues introduced by this change):
+turned up one design point, since fixed, plus confirmation that several
+other things some review candidates might flag are actually inherited,
+consistent behavior from the sibling `upload_sftp.php` /
+`remote_ssh_identity_type` automations (not new issues introduced by
+this change):
 
-- **Non-atomic remote write (new, not inherited).** `buildRemoteScript()`
-  writes the cert and key with `cat > file <<'MARKER'`, which truncates
-  each file in place, under `set -e`. If the SSH session drops between
-  the cert write and the key write, the device is left with a mismatched
-  (or truncated) cert/key pair for what is the device's own HTTPS
-  listener. The SFTP automation doesn't have quite the same failure
-  shape. Consider writing to a `.tmp` name per file and `mv`-ing both
-  into place only after each write succeeds, so a dropped connection
-  can't leave the device with a half-applied certificate.
+- **Non-atomic remote write — fixed.** `buildRemoteScript()` used to
+  write the cert and key with `cat > file <<'MARKER'`, which truncates
+  each file in place, under `set -e`. If the SSH session dropped between
+  the cert write and the key write, the device would be left with a
+  mismatched (or truncated) cert/key pair for what is the device's own
+  HTTPS listener — the SFTP automation doesn't have quite the same
+  failure shape. Both files are now staged under temporary names,
+  chmod'ed, and only `mv`-ed into their final names once both are fully
+  written, validated against a real device (see "Hardware validation"
+  above).
 - The "Select 'none' to use default 'ECDSA'" help text on
   `jetkvm_identity_type` is copied verbatim from `sftp_identity_type` /
   `remote_ssh_identity_type` — confirmed against upstream, not a new
@@ -105,10 +111,11 @@ issues introduced by this change):
 - The new/changed XML (`AcmeClient.xml`, `dialogAction.xml`) is
   well-formed, checked with `xmllint --noout` against the full
   post-patch files (not just the diff).
-- `php -l` on the two new PHP files could not be re-verified in this
-  review's environment (no `php` binary available); this repeats the
-  claim from the original "Testing done" section below, which was made
-  in a different environment and wasn't independently re-checked here.
+- `php -l` on all three new/changed PHP files (`upload_jetkvm.php`,
+  `ConfigdUploadJetkvm.php`, `ActionsController.php`) re-verified with
+  an actual `php-cli` (via a disposable container, since this review
+  environment has no `php` binary installed) after the atomic-write and
+  default-filename fixes — no syntax errors.
 
 ## What's included
 
@@ -140,8 +147,10 @@ issues introduced by this change):
 
 ## Testing done
 
-- `php -l` on every new/changed PHP file.
-- XML well-formedness check on the model and dialog XML.
+- `php -l` on every new/changed PHP file, re-verified with a real
+  `php-cli` after the latest fixes (see "Code review notes").
+- XML well-formedness check (`xmllint --noout`) on the full, post-patch
+  model and dialog XML files.
 - Manual cross-check that every `jetkvm_*` field referenced in the dialog
   form and in the backend script's `getOptionsById()` exists in the model
   with a matching name (11/11).
@@ -155,12 +164,21 @@ issues introduced by this change):
   filename sanitization (`basename()`) against path traversal in the
   configurable cert/key filename fields, plus a graceful error path
   instead of an uncaught assertion when the remote path is empty.
-- **Not done / not possible in this environment:** end-to-end testing
-  against a running OPNsense install (this plugin depends on the private
-  OPNsense core framework — `OPNsense\Core\Config`, `OPNsense\Trust\Cert`,
-  etc. — which isn't available outside a real OPNsense system) or against
-  physical JetKVM hardware. Please test on real hardware before merging,
-  particularly the default remote path/filenames.
+- `git am` verified to apply the patch cleanly against current
+  `opnsense/plugins` `master`.
+- **Real JetKVM hardware (2026-08-11):** connected over SSH and
+  confirmed the remote path, corrected the deployed filenames, confirmed
+  the reboot-to-apply behavior, and validated the atomic-write sequence
+  end-to-end using throwaway filenames (never touching the device's real
+  certificate files). See "Hardware validation" above for details.
+- **Still not done / not possible in this environment:** end-to-end
+  testing against a running OPNsense install (this plugin depends on the
+  private OPNsense core framework — `OPNsense\Core\Config`,
+  `OPNsense\Trust\Cert`, etc. — which isn't available outside a real
+  OPNsense system), i.e. the model/dialog/API-controller wiring and the
+  actual ACME-issued-certificate-to-device flow haven't been exercised
+  end-to-end, only the underlying SSH/remote-script mechanism against
+  the JetKVM side.
 
 ## How to use once merged
 
@@ -172,7 +190,11 @@ issues introduced by this change):
    and paste that public key into the SSH key field.
 4. Fill in the JetKVM host/IP (user defaults to `root`), click **"Test
    Connection"** to verify SSH connectivity and host key trust.
-5. Attach the automation to a certificate's "Automations" list so it runs
+5. Optionally set the "Post-Upload Command" field to `reboot` if you want
+   the new certificate applied automatically (JetKVM requires a full
+   device reboot to pick up a new "Custom" certificate — this briefly
+   drops any active KVM-over-IP session, so it's opt-in).
+6. Attach the automation to a certificate's "Automations" list so it runs
    after issuance/renewal.
 
 ## Research sources
@@ -190,6 +212,8 @@ issues introduced by this change):
 
 ---
 
-*Prepared by Claude (Cowork). No GitHub credentials were available in
-the sandbox this was built in, so the branch/commit was prepared locally
-for you to push — see `APPLY_INSTRUCTIONS.md` in this delivery.*
+*Prepared by Claude (Cowork), later revised and validated against real
+JetKVM hardware in a follow-up session. No GitHub credentials were
+available in the sandbox(es) this was built in, so the branch/commit was
+prepared locally for you to push — see `APPLY_INSTRUCTIONS.md` in this
+delivery.*
