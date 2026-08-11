@@ -81,12 +81,32 @@ later, just `rm` them; see "Rolling back" below.)
 On the firewall, after the files are in place:
 
 ```sh
-configctl configd restart   # picks up the new actions in actions_acmeclient.conf
+service configd restart     # picks up the new actions in actions_acmeclient.conf
 configctl webgui restart    # picks up the PHP/XML/volt changes (drops your GUI session briefly)
 ```
 
-`configctl webgui restart` will disconnect your current web UI session for a
-few seconds — that's expected, just log back in.
+Note it's `service configd restart` (the plain FreeBSD rc.d command), **not**
+`configctl configd restart`. configd exposes its own actions over the same
+socket `configctl` normally talks to (`configd actions` / `configd
+environment` / `configd lookup`), but there is no `configd restart` action —
+`configctl configd restart` fails immediately with `Action not allowed or
+missing` before it ever touches your deployed files, since it never reaches
+the daemon's config-reload code at all. configd has to be restarted the
+ordinary way, like any other rc.d service, because it can't service a
+request to kill/replace itself through its own request-handling loop.
+
+`configctl webgui restart` (that one *is* a real configd action, unlike the
+line above) will disconnect your current web UI session for a few seconds —
+that's expected, just log back in.
+
+To confirm configd actually reloaded and picked up the 3 new actions:
+
+```sh
+configctl configd actions | grep -i jetkvm
+```
+
+You should see `acmeclient upload-jetkvm`, `acmeclient test-jetkvm-connection`,
+and `acmeclient show-jetkvm-identity` in the output.
 
 ## 4. Verify
 
@@ -120,7 +140,7 @@ cp -Rp /root/acmeclient-jetkvm-backup/* /usr/local/opnsense/
 rm /usr/local/opnsense/mvc/app/library/OPNsense/AcmeClient/LeAutomation/ConfigdUploadJetkvm.php
 rm /usr/local/opnsense/scripts/OPNsense/AcmeClient/upload_jetkvm.php
 
-configctl configd restart
+service configd restart
 configctl webgui restart
 ```
 
