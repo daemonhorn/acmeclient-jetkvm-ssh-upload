@@ -68,13 +68,34 @@ directly against a real JetKVM device over SSH:
   write can no longer leave the device with a truncated or mismatched
   cert/key pair for its own HTTPS listener. This exact write sequence
   (staging, chmod, atomic rename, cleanup) was validated end-to-end
-  against the device using throwaway filenames, so the device's real
-  certificate files were never touched by this testing.
+  against the device using throwaway filenames.
+
+**What this testing did *not* confirm**, precisely because the device's
+real certificate files were deliberately left untouched (no test cert
+was actually deployed and no reboot was triggered):
+
+- That a certificate dropped at `user-defined.crt` / `user-defined.key`
+  and then applied via reboot is actually **served** by the HTTPS
+  listener afterwards. This is inferred from `update-user-defined.sh`
+  being the device's own apply mechanism, not directly observed.
+- Whether **"Custom" TLS mode needs to be selected once in the JetKVM
+  web UI** before it will pick up files dropped at that path. This
+  matters: on the tested device, `user-defined.crt`/`.key` already
+  existed but were several months stale next to a clearly more-recently
+  refreshed `jetkvm.crt`/`.key` pair — consistent with "Custom" mode not
+  currently being the active mode on that device. If GUI-side mode
+  selection is in fact a one-time prerequisite (as the original,
+  research-based caveat assumed), this automation's uploads would be a
+  silent no-op until a human enables "Custom" mode once. The "How to
+  use once merged" steps below carry that prerequisite forward
+  accordingly.
 
 No further changes to the remote path/filenames are expected to be
-needed, though — as the help text still notes — none of this is
-documented/stable JetKVM API, so it's worth a spot-check after any
-JetKVM firmware upgrade.
+needed for what *was* confirmed, though — as the help text still notes —
+none of this is documented/stable JetKVM API, so it's worth a
+spot-check after any JetKVM firmware upgrade, and the two items above
+are worth a real end-to-end test (deploy + reboot + verify the browser
+sees the new cert) before merging.
 
 ## Code review notes (2026-08-10, updated 2026-08-11)
 
@@ -182,20 +203,30 @@ this change):
 
 ## How to use once merged
 
-1. In **Services > ACME Client > Automations**, add a new automation and
+1. On the JetKVM device's web UI, under TLS/HTTPS settings, select
+   **"Custom"** certificate mode once (unconfirmed whether this is a
+   hard prerequisite for JetKVM to actually read
+   `user-defined.crt`/`.key` — see "What this testing did not confirm"
+   above — but do it regardless, since it's how JetKVM is documented to
+   pick a custom cert source).
+2. In **Services > ACME Client > Automations**, add a new automation and
    set "Run Command" to **"Upload certificate to JetKVM (SSH)"**.
-2. Click **"Show Identity"** to get the plugin's SSH public key (or reuse
+3. Click **"Show Identity"** to get the plugin's SSH public key (or reuse
    one already configured for another SFTP/SSH automation).
-3. On the JetKVM device: Settings > Advanced > enable **Developer Mode**
+4. On the JetKVM device: Settings > Advanced > enable **Developer Mode**
    and paste that public key into the SSH key field.
-4. Fill in the JetKVM host/IP (user defaults to `root`), click **"Test
+5. Fill in the JetKVM host/IP (user defaults to `root`), click **"Test
    Connection"** to verify SSH connectivity and host key trust.
-5. Optionally set the "Post-Upload Command" field to `reboot` if you want
+6. Optionally set the "Post-Upload Command" field to `reboot` if you want
    the new certificate applied automatically (JetKVM requires a full
    device reboot to pick up a new "Custom" certificate — this briefly
    drops any active KVM-over-IP session, so it's opt-in).
-6. Attach the automation to a certificate's "Automations" list so it runs
+7. Attach the automation to a certificate's "Automations" list so it runs
    after issuance/renewal.
+8. **Before relying on this in production:** run it once manually and
+   confirm in a browser that the JetKVM device is actually presenting
+   the new certificate after the reboot — the "served" step is the one
+   piece of the flow this delivery could not verify (see above).
 
 ## Research sources
 

@@ -1,4 +1,4 @@
-From 6bb251daf5a0586c55bddfdfc7c9c704770d19a3 Mon Sep 17 00:00:00 2001
+From cfa03cf5a2bebf78e72dd6a840b9e52a5d2257cb Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Tue, 11 Aug 2026 00:51:12 +0000
 Subject: [PATCH] security/acme-client: add automation to upload certificate to
@@ -18,7 +18,9 @@ a plain SSH exec session (no scp/sftp-server dependency on the device
 side), since JetKVM's minimal userspace is not guaranteed to include
 either.
 
-Validated against a real JetKVM device over SSH:
+Partially validated against a real JetKVM device over SSH (read-only
+reconnaissance plus writes to throwaway filenames only; the device's
+real certificate files were deliberately never touched or overwritten):
 
 - Corrected the deployed filenames: JetKVM's "Custom" TLS mode reads
   "user-defined.crt" / "user-defined.key" from /userdata/jetkvm/tls,
@@ -30,12 +32,24 @@ Validated against a real JetKVM device over SSH:
   truncating the live files in place via "cat >". This prevents a
   dropped SSH connection or a failed write from leaving the device
   with a truncated or mismatched cert/key pair for its own HTTPS
-  listener.
+  listener. The full staged-write-then-rename sequence was validated
+  end-to-end against the device using throwaway filenames.
 - Confirmed JetKVM has no hot-reload for a "Custom" certificate: its
   own certificate-apply script performs a full device reboot. The
   post-upload command field's help text now says this explicitly; the
   field itself is still left blank by default since a reboot briefly
   drops any active KVM-over-IP session.
+
+NOT confirmed by this testing, since the device's real certificate
+files were left untouched: that a certificate written to these paths
+is actually served after a reboot, and whether JetKVM's "Custom" TLS
+mode needs to be selected once via the web UI before it will pick up
+files dropped at this path (plausible given the existing
+user-defined.crt/.key on the test device were several months stale
+next to a more recently refreshed default cert pair, suggesting
+"Custom" mode was not the active mode there). A real end-to-end test
+(deploy, reboot, verify the served certificate in a browser) is still
+needed before merging.
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_017prPdJCJSQvs1DVJqaGVGe
