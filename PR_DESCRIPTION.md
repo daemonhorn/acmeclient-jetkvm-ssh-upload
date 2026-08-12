@@ -3,7 +3,7 @@
 **Important notices**
 
 - [x] I have read the contributing guidelines at https://github.com/opnsense/plugins/blob/master/CONTRIBUTING.md
-- [ ] I opened an issue first for non-trivial changes and linked it below.
+- [x] I opened an issue first for non-trivial changes and linked it below.
 - [x] AI tools were used to create at least part of the code submitted herewith.
 
 If AI was used, please disclose:
@@ -25,9 +25,8 @@ If AI was used, please disclose:
   pushed/opened as this PR, and subsequently revised, by the maintainer's
   AI assistant with their authorization.
 
-*No issue was opened ahead of this PR.* This is an incremental addition to
-an existing, actively-maintained plugin (not a new plugin), but happy to
-open one retroactively and link it here if maintainers would prefer that.
+**Related issue:** #5622 (opened retroactively, since this PR was already
+in progress before the issue-first guideline was checked against).
 
 ---
 
