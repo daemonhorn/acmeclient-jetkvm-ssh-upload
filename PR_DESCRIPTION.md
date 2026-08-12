@@ -1,5 +1,36 @@
 # security/acme-client: add automation to upload certificate to JetKVM via SSH
 
+**Important notices**
+
+- [x] I have read the contributing guidelines at https://github.com/opnsense/plugins/blob/master/CONTRIBUTING.md
+- [ ] I opened an issue first for non-trivial changes and linked it below.
+- [x] AI tools were used to create at least part of the code submitted herewith.
+
+If AI was used, please disclose:
+
+- **Model used:** Claude (Anthropic). Primarily Claude Sonnet 5 across several
+  agentic coding sessions (Claude Code); an earlier pass also used Claude
+  Opus 5 as an independent advisory reviewer of the code and documentation.
+- **Extent of AI involvement:** Effectively all of the code, this PR
+  description, and the commit messages were produced by Claude operating
+  largely autonomously under a human maintainer's direction and review
+  across multiple sessions. This included direct SSH access (granted by the
+  maintainer) to a real JetKVM device, and separately to a live OPNsense
+  26.7.1_1 test system, to validate assumptions that public documentation
+  alone couldn't settle — the exact remote storage path/filenames, the
+  reboot-to-apply requirement, and the "HTTPS Mode: Custom" prerequisite —
+  and to debug a deployment issue after manual testing surfaced it. No
+  GitHub credentials were available in the sandbox the code was originally
+  drafted in, so the branch/commits were prepared locally and later
+  pushed/opened as this PR, and subsequently revised, by the maintainer's
+  AI assistant with their authorization.
+
+*No issue was opened ahead of this PR.* This is an incremental addition to
+an existing, actively-maintained plugin (not a new plugin), but happy to
+open one retroactively and link it here if maintainers would prefer that.
+
+---
+
 ## Summary
 
 Adds a new automation ("Run Command" type) to the OPNsense **ACME Client**
@@ -56,11 +87,7 @@ directly against a real JetKVM device over SSH:
 - There is indeed no hot-reload: the device's own certificate-apply
   script (`update-user-defined.sh`, shipped in that same directory) does
   a full `sync && reboot` after writing the cert/key. The post-upload
-  command field's help text now states this explicitly. The field is
-  still left **blank by default** rather than auto-rebooting, since a
-  reboot briefly drops any active KVM-over-IP session — set it to
-  `reboot` yourself if you want the new certificate applied
-  automatically right after upload.
+  command field's help text states this explicitly.
 - The remote write was changed from truncating the live `cat > file`
   target in place to staging both files under temporary names, chmod'ing
   them, and only `mv`-ing them into their final names (an atomic rename)
@@ -70,32 +97,36 @@ directly against a real JetKVM device over SSH:
   (staging, chmod, atomic rename, cleanup) was validated end-to-end
   against the device using throwaway filenames.
 
-**What this testing did *not* confirm**, precisely because the device's
-real certificate files were deliberately left untouched (no test cert
-was actually deployed and no reboot was triggered):
+A follow-up round of testing on production hardware (running this
+automation for real, unattended, as part of cron-driven ACME renewal)
+closed out both items the first round of hardware validation had left
+open:
 
-- That a certificate dropped at `user-defined.crt` / `user-defined.key`
-  and then applied via reboot is actually **served** by the HTTPS
-  listener afterwards. This is inferred from `update-user-defined.sh`
-  being the device's own apply mechanism, not directly observed.
-- Whether **"Custom" TLS mode needs to be selected once in the JetKVM
-  web UI** before it will pick up files dropped at that path. This
-  matters: on the tested device, `user-defined.crt`/`.key` already
-  existed but were several months stale next to a clearly more-recently
-  refreshed `jetkvm.crt`/`.key` pair — consistent with "Custom" mode not
-  currently being the active mode on that device. If GUI-side mode
-  selection is in fact a one-time prerequisite (as the original,
-  research-based caveat assumed), this automation's uploads would be a
-  silent no-op until a human enables "Custom" mode once. The "How to
-  use once merged" steps below carry that prerequisite forward
-  accordingly.
+- **Confirmed: a certificate uploaded to `user-defined.crt` /
+  `user-defined.key` and then applied via reboot *is* served** by the
+  device's HTTPS listener afterward — verified in a browser against the
+  device.
+- **Confirmed: JetKVM's "HTTPS Mode" must already be set to "Custom" in
+  the device's own web UI (Settings > Network) before this automation's
+  uploads take effect.** This automation only writes the cert/key files
+  and optionally reboots — it does not switch HTTPS mode for you. The
+  "JetKVM Host" field's help text and the "How to use once merged" steps
+  below now state this as a required prerequisite rather than a
+  should-probably-do-this-anyway suggestion.
+- **Changed the post-upload command's default from blank to `reboot`.**
+  Leaving it blank meant a certificate renewed by an unattended cron job
+  never actually got applied without a human manually rebooting the
+  device afterward — which defeats the point of automating renewal in
+  the first place. Since these renewals (and the reboot they trigger)
+  typically run overnight, when an active KVM-over-IP session is
+  unlikely, defaulting to `reboot` is the better tradeoff for this
+  automation's real use case; the field can still be cleared for anyone
+  who'd rather apply/verify manually.
 
 No further changes to the remote path/filenames are expected to be
-needed for what *was* confirmed, though — as the help text still notes —
-none of this is documented/stable JetKVM API, so it's worth a
-spot-check after any JetKVM firmware upgrade, and the two items above
-are worth a real end-to-end test (deploy + reboot + verify the browser
-sees the new cert) before merging.
+needed, though — as the help text still notes — none of this is
+documented/stable JetKVM API, so it's worth a spot-check after any
+JetKVM firmware upgrade.
 
 ## Code review notes (2026-08-10, updated 2026-08-11)
 
@@ -203,12 +234,12 @@ this change):
 
 ## How to use once merged
 
-1. On the JetKVM device's web UI, under TLS/HTTPS settings, select
-   **"Custom"** certificate mode once (unconfirmed whether this is a
-   hard prerequisite for JetKVM to actually read
-   `user-defined.crt`/`.key` — see "What this testing did not confirm"
-   above — but do it regardless, since it's how JetKVM is documented to
-   pick a custom cert source).
+1. **Required:** on the JetKVM device's web UI, under Settings > Network,
+   set **"HTTPS Mode"** to **"Custom"**. This automation only writes the
+   `user-defined.crt`/`.key` files (and optionally reboots) — it does not
+   switch HTTPS mode for you, and uploads won't take effect until this is
+   set. Confirmed on production hardware (see "Hardware validation"
+   above).
 2. In **Services > ACME Client > Automations**, add a new automation and
    set "Run Command" to **"Upload certificate to JetKVM (SSH)"**.
 3. Click **"Show Identity"** to get the plugin's SSH public key (or reuse
@@ -217,16 +248,13 @@ this change):
    and paste that public key into the SSH key field.
 5. Fill in the JetKVM host/IP (user defaults to `root`), click **"Test
    Connection"** to verify SSH connectivity and host key trust.
-6. Optionally set the "Post-Upload Command" field to `reboot` if you want
-   the new certificate applied automatically (JetKVM requires a full
-   device reboot to pick up a new "Custom" certificate — this briefly
-   drops any active KVM-over-IP session, so it's opt-in).
+6. The "Post-Upload Command" field defaults to `reboot`, since JetKVM
+   requires a full device reboot to pick up a new "Custom" certificate
+   and this automation is meant to run unattended. This briefly drops any
+   active KVM-over-IP session — clear the field if you'd rather
+   apply/verify manually instead.
 7. Attach the automation to a certificate's "Automations" list so it runs
    after issuance/renewal.
-8. **Before relying on this in production:** run it once manually and
-   confirm in a browser that the JetKVM device is actually presenting
-   the new certificate after the reboot — the "served" step is the one
-   piece of the flow this delivery could not verify (see above).
 
 ## Research sources
 
@@ -243,8 +271,6 @@ this change):
 
 ---
 
-*Prepared by Claude (Cowork), later revised and validated against real
-JetKVM hardware in a follow-up session. No GitHub credentials were
-available in the sandbox(es) this was built in, so the branch/commit was
-prepared locally for you to push — see `APPLY_INSTRUCTIONS.md` in this
-delivery.*
+*See the AI-disclosure notice at the top of this description, and
+`APPLY_INSTRUCTIONS.md` in this delivery for how the branch/commits were
+prepared and pushed.*

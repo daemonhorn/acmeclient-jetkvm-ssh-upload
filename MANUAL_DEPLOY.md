@@ -156,7 +156,15 @@ here if you want to try again.
   version, so the Firmware plugin list will keep showing 4.16 with a
   manually-patched 4.17-worth of files underneath. That's fine for testing;
   it just means `pkg` won't know about this until the real package ships.
-- See `PR_DESCRIPTION.md`'s "Hardware validation" section for what has and
-  hasn't been confirmed against real JetKVM hardware — in particular,
-  whether "Custom" TLS mode needs to be enabled once via the JetKVM web UI
-  before it will pick up an uploaded certificate is still unconfirmed.
+- **Required on the JetKVM device itself:** "HTTPS Mode" must already be
+  set to "Custom" under Settings > Network before this automation's
+  uploads take effect — it only writes the cert/key files (and, by
+  default, reboots); it does not switch HTTPS mode for you. Confirmed
+  against production hardware — see `PR_DESCRIPTION.md`'s "Hardware
+  validation" section for detail.
+- The automation's "Post-Upload Command" now defaults to `reboot` (a new
+  automation created via the GUI will have it pre-filled). If you're
+  scripting an automation via the API/config XML directly instead of the
+  GUI, set `jetkvm_restart_command` to `reboot` yourself if you want the
+  certificate applied automatically after upload — otherwise it'll sit
+  written to disk on the device until something else reboots it.

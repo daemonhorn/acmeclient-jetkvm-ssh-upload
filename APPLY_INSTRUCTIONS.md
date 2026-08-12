@@ -1,15 +1,24 @@
 # How to apply this and open the PR
 
-Both options below are verified working (2026-08-11), against the
-current `opnsense/plugins` `master`, with one caveat on Option B.
+This delivery is already open as **[opnsense/plugins#5621](https://github.com/opnsense/plugins/pull/5621)**
+(branch `feature/acmeclient-jetkvm-ssh-upload` on `daemonhorn/plugins`). The
+instructions below are for reproducing/re-applying it elsewhere (a fresh
+fork, a different machine) if needed — not a first-time setup.
 
-## Option A: apply the patch file (recommended)
+It's 3 commits, not 1: the original change, a follow-up filling in the real
+PR number in the changelog, and a follow-up (driven by real production
+testing) fixing the post-upload command's default and documenting a
+required device-side prerequisite. Both options below apply all 3, in
+order, and are verified working (2026-08-11) against the current
+`opnsense/plugins` `master`.
+
+## Option A: apply the patch files (recommended)
 
 ```sh
 git clone https://github.com/<your-fork>/plugins.git
 cd plugins
 git checkout -b feature/acmeclient-jetkvm-ssh-upload master
-git am 0001-security-acme-client-add-automation-to-upload-certif.patch
+git am 0001-*.patch 0002-*.patch 0003-*.patch
 git push origin feature/acmeclient-jetkvm-ssh-upload
 ```
 
@@ -26,61 +35,56 @@ git push origin feature/acmeclient-jetkvm-ssh-upload
 
 This works — confirmed by fetching it into a real clone of
 `opnsense/plugins` and then checking for missing objects with
-`git rev-list --objects --missing=print <ref>` (0 of ~9,800 objects
+`git rev-list --objects --missing=print <ref>` (0 of ~9,860 objects
 missing) — **as long as step 1 is a real `git clone` of the actual
 repo** (not the bundle itself, and not a partial/blob-filtered clone,
 which can silently backfill missing blobs from GitHub and mask a
-genuinely incomplete bundle). An earlier version of this bundle was
-built from a shallow, blob-filtered clone and was **not** actually
-self-contained; it has since been rebuilt from a full, unfiltered clone
-and re-verified with the missing-objects check above. Running
-`git clone acmeclient-jetkvm-ssh-upload.bundle` directly (skip step 1,
-clone the bundle on its own) still fails with `remote did not send all
-necessary objects` regardless, since a bundle is never a complete
-standalone repo by itself — it always needs to be fetched into an
-existing clone that already has the base history. Use Option A if in
-doubt.
+genuinely incomplete bundle). Running `git clone
+acmeclient-jetkvm-ssh-upload.bundle` directly (skip step 1, clone the
+bundle on its own) still fails with `remote did not send all necessary
+objects` regardless, since a bundle is never a complete standalone repo
+by itself — it always needs to be fetched into an existing clone that
+already has the base history. Use Option A if in doubt.
 
-## Before opening the PR
+## Hardware validation status (as of 2026-08-11, 2nd round)
 
-1. **Hardware validation done (2026-08-11), but not complete — see
-   below.** Tested directly against a real JetKVM device over SSH:
-   - Confirmed: `/userdata/jetkvm/tls` is the correct storage directory
-     for "Custom" TLS mode.
-   - Confirmed and **fixed**: the filenames were wrong in the first
-     draft. JetKVM's "Custom" TLS mode reads `user-defined.crt` /
-     `user-defined.key`, not `fullchain.pem` / `privkey.pem`. The
-     script defaults and model/dialog help text now reflect this.
-   - Confirmed: JetKVM does not hot-reload a "Custom" certificate; its
-     own apply script does a full device `reboot`. The post-upload
-     command field's help text says this explicitly; the field is
-     still blank by default since a reboot briefly drops any active
-     KVM-over-IP session — set it to `reboot` yourself if you want it
-     applied automatically.
-   - Confirmed and **fixed**: the remote write now stages the cert/key
-     under temporary names and atomically `mv`-s them into place,
-     instead of truncating the live files in place. Validated
-     end-to-end against the device (including cleanup) using throwaway
-     filenames — the real device certificates were deliberately never
-     touched by this testing.
-   - **Not confirmed** (precisely because the real cert files were left
-     untouched): that a certificate written to those paths is actually
-     *served* after a reboot, and whether "Custom" TLS mode has to be
-     manually selected once in the JetKVM web UI first. See
-     PR_DESCRIPTION.md's "What this testing did not confirm" for why
-     this matters — do a real end-to-end test (deploy, reboot, check
-     the served cert in a browser) before merging.
-2. Replace the changelog placeholder in `security/acme-client/pkg-descr`
-   (`(#XXXX)`) with the real PR number once GitHub assigns one — this is
-   the convention used throughout that file's changelog.
-3. Open the PR against `opnsense/plugins` (base: `master`) using the
-   title and body in `PR_DESCRIPTION.md`.
+Both open questions from the first round of hardware testing have since
+been closed out by real production use (see PR_DESCRIPTION.md's "Hardware
+validation" section for full detail):
+
+- **Confirmed:** a certificate uploaded to `user-defined.crt` /
+  `user-defined.key` and applied via reboot *is* served by the device's
+  HTTPS listener.
+- **Confirmed:** JetKVM's "HTTPS Mode" must already be set to "Custom" in
+  the device's own web UI (Settings > Network) — this automation does not
+  switch modes for you. Documented in the "JetKVM Host" field's help text
+  and step 1 of PR_DESCRIPTION.md's "How to use once merged".
+- **Changed:** the post-upload command now defaults to `reboot` instead of
+  blank, since this automation is meant to run unattended (cron-driven
+  ACME renewal, typically overnight) and a blank default meant a renewed
+  certificate never actually got applied without manual follow-up.
+
+## Before opening a PR (if reproducing this elsewhere)
+
+1. Replace the changelog placeholder in `security/acme-client/pkg-descr`
+   with the real PR number once GitHub assigns one — this is the
+   convention used throughout that file's changelog. (Already done here:
+   `#5621`.)
+2. Fill in the PR template's checklist (`.github/pull_request_template.md`
+   in `opnsense/plugins`) — notably the AI-tools disclosure, which is
+   required per that repo's `CONTRIBUTING.md`. `PR_DESCRIPTION.md` already
+   includes this at the top, matching the template's format.
+3. Open the PR against `opnsense/plugins` (base: `master`) using the title
+   and body in `PR_DESCRIPTION.md`.
 
 ## Files in this delivery
 
-- `0001-security-acme-client-add-automation-to-upload-certif.patch` —
-  the change as a single `git am`-able patch.
-- `acmeclient-jetkvm-ssh-upload.bundle` — the same commit as a git
-  bundle (alternate way to pull it in).
-- `PR_DESCRIPTION.md` — suggested PR title/body.
+- `0001-*.patch`, `0002-*.patch`, `0003-*.patch` — the change as a
+  3-commit, `git am`-able patch series (apply in order).
+- `acmeclient-jetkvm-ssh-upload.bundle` — the same 3 commits as a git
+  bundle (alternate way to pull them in).
+- `PR_DESCRIPTION.md` — the actual PR title/body (including the required
+  AI-disclosure notice).
 - `APPLY_INSTRUCTIONS.md` — this file.
+- `MANUAL_DEPLOY.md` + `deploy/` — a separate path for testing the change
+  directly on a live OPNsense box without waiting for the PR to merge.

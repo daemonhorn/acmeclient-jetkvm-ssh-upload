@@ -1,0 +1,29 @@
+From a1c83f1db1c678100c549d43a3dd15c3eabedd1a Mon Sep 17 00:00:00 2001
+From: daemonhorn <daemonhorn@nullcore.com>
+Date: Tue, 11 Aug 2026 19:17:41 -0400
+Subject: [PATCH 2/3] security/acme-client: fill in PR number in changelog
+
+Replaces the (#XXXX) placeholder now that GitHub assigned #5621 to
+this PR, per the plugin's changelog convention.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+---
+ security/acme-client/pkg-descr | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/security/acme-client/pkg-descr b/security/acme-client/pkg-descr
+index 6c690ea..f33d53c 100644
+--- a/security/acme-client/pkg-descr
++++ b/security/acme-client/pkg-descr
+@@ -11,7 +11,7 @@ Plugin Changelog
+ 4.17
+ 
+ Added:
+-* new automation to upload certificate to JetKVM via SSH (#XXXX)
++* new automation to upload certificate to JetKVM via SSH (#5621)
+ 
+ 4.16
+ 
+-- 
+2.47.3
+
