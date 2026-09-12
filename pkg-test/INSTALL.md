@@ -20,7 +20,7 @@ special-casing needed to get back to normal. See "Reverting" below.
 
 - **`os-acme-client`**: adds one new automation, "Upload certificate to
   JetKVM (SSH)" (`acme_jetkvm`) -- 1 new file
-  (`LeAutomation/AcmeJetkvm.php`, ~15 lines) plus additions to the model
+  (`LeAutomation/AcmeJetkvm.php`, ~55 lines) plus additions to the model
   (`AcmeClient.xml`) and dialog (`dialogAction.xml`). Nothing else in
   the package was touched -- confirmed by diffing the full manifest
   against the real `4.16_1` package field-by-field (scripts, deps, all
