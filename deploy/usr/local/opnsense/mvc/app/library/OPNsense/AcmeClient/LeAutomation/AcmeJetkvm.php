@@ -1,7 +1,7 @@
 <?php
 
 /*
- * Copyright (C) 2026 Frank Wall
+ * Copyright (C) 2026 daemonhorn
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,15 +31,18 @@ namespace OPNsense\AcmeClient\LeAutomation;
 use OPNsense\AcmeClient\LeAutomationInterface;
 
 /**
- * Upload certificate and private key to a JetKVM device via SSH
+ * Run acme.sh deploy hook jetkvm
  * @package OPNsense\AcmeClient
  */
-class ConfigdUploadJetkvm extends Base implements LeAutomationInterface
+class AcmeJetkvm extends Base implements LeAutomationInterface
 {
     public function prepare()
     {
-        $command = 'acmeclient upload-jetkvm ' . $this->cert_id . ' ' . $this->config->id;
-        $this->command = $command;
+        $this->acme_env['DEPLOY_JETKVM_HOST'] = (string)$this->config->acme_jetkvm_host;
+        $this->acme_env['DEPLOY_JETKVM_USER'] = (string)$this->config->acme_jetkvm_user;
+        $this->acme_env['DEPLOY_JETKVM_PORT'] = (string)$this->config->acme_jetkvm_port;
+        $this->acme_env['DEPLOY_JETKVM_RESTART_CMD'] = ((string)$this->config->acme_jetkvm_reboot == 1) ? 'reboot' : 'none';
+        $this->acme_args[] = '--deploy-hook jetkvm';
         return true;
     }
 }

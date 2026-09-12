@@ -468,7 +468,9 @@
                         <dns_exoscale>Exoscale</dns_exoscale>
                         <dns_fornex>Fornex</dns_fornex>
                         <dns_freedns>FreeDNS</dns_freedns>
+                        <dns_freemyip>FreeMyIP</dns_freemyip>
                         <dns_gandi_livedns>Gandi LiveDNS</dns_gandi_livedns>
+                        <dns_gcore>GCore Managed DNS</dns_gcore>
                         <dns_gd>GoDaddy.com</dns_gd>
                         <dns_gcloud>Google Cloud DNS</dns_gcloud>
                         <dns_googledomains>Google Domains</dns_googledomains>
@@ -477,6 +479,7 @@
                         <dns_hetznercloud>Hetzner Cloud</dns_hetznercloud>
                         <dns_hexonet>hexonet.com</dns_hexonet>
                         <dns_hostingde>hosting.de</dns_hostingde>
+                        <dns_hostinger>Hostinger</dns_hostinger>
                         <dns_he>Hurricane Electric</dns_he>
                         <dns_he_ddns>Hurricane Electric DDNS</dns_he_ddns>
                         <dns_infoblox>Infoblox</dns_infoblox>
@@ -722,6 +725,9 @@
                 <dns_freedns_password type="TextField">
                     <Required>N</Required>
                 </dns_freedns_password>
+                <dns_freemyip_token type="TextField">
+                    <Required>N</Required>
+                </dns_freemyip_token>
                 <dns_fornex_api_key type="TextField">
                     <Required>N</Required>
                 </dns_fornex_api_key>
@@ -734,6 +740,9 @@
                 <dns_gcloud_key type="TextField">
                     <Required>N</Required>
                 </dns_gcloud_key>
+                <dns_gcore_token type="TextField">
+                    <Required>N</Required>
+                </dns_gcore_token>
                 <dns_googledomains_access_token type="TextField">
                     <Required>N</Required>
                 </dns_googledomains_access_token>
@@ -752,6 +761,9 @@
                 <dns_hostingde_apiKey type="TextField">
                     <Required>N</Required>
                 </dns_hostingde_apiKey>
+                <dns_hostinger_token type="TextField">
+                    <Required>N</Required>
+                </dns_hostinger_token>
                 <dns_he_user type="TextField">
                     <Required>N</Required>
                 </dns_he_user>
@@ -1426,7 +1438,6 @@
                         <configd_reload_caddy>Reload Caddy (OPNsense plugin)</configd_reload_caddy>
                         <configd_upload_sftp>Upload certificate via SFTP</configd_upload_sftp>
                         <configd_remote_ssh>Remote Command via SSH</configd_remote_ssh>
-                        <configd_upload_jetkvm>Upload certificate to JetKVM (SSH)</configd_upload_jetkvm>
                         <acme_fritzbox>Upload certificate to FRITZ!Box router</acme_fritzbox>
                         <acme_panos>Upload certificate to Palo Alto Networks Firewall</acme_panos>
                         <acme_proxmoxbs>Upload certificate to Proxmox Backup Server</acme_proxmoxbs>
@@ -1435,9 +1446,10 @@
                         <acme_vault>Upload certificate to HashiCorp Vault</acme_vault>
                         <acme_synology_dsm>Upload certificate to Synology DSM</acme_synology_dsm>
                         <acme_truenas>Upload certificate to TrueNAS Server (deprecated API)</acme_truenas>
-                        <acme_truenas_ws>Upload certificate to TrueNAS Server (Websocket API)</acme_truenas_ws>
+                        <acme_truenas_ws>Deprecated - Upload certificate to TrueNAS Server (midctl/websocket)</acme_truenas_ws>
                         <acme_zyxel_gs1900>Upload certificate to Zyxel GS1900 series switches</acme_zyxel_gs1900>
                         <acme_unifi>Update local Unifi keystore</acme_unifi>
+                        <acme_jetkvm>Upload certificate to JetKVM (SSH)</acme_jetkvm>
                         <configd_generic>System or Plugin Command</configd_generic>
                     </OptionValues>
                 </type>
@@ -1558,75 +1570,6 @@
                     <Mask>/^.{1,1024}$/u</Mask>
                     <ValidationMessage>Should be a shell command between 1 and 1024 characters.</ValidationMessage>
                 </remote_ssh_command>
-                <jetkvm_host type="TextField">
-                    <Required>N</Required>
-                    <Mask>/^.{1,255}$/u</Mask>
-                    <ValidationMessage>Should be a string between 1 and 255 characters.</ValidationMessage>
-                </jetkvm_host>
-                <jetkvm_host_key type="TextField">
-                    <Required>N</Required>
-                    <!-- Key format: (comment)? key-type :SPACE: key-base64 (:SPACE: comment)?
-                         Reference: https://stackoverflow.com/a/475217 -->
-                    <Mask>/^.+?\s(?:[a-z0-9+\/]{4})*(?:[a-z0-9+\/]{2}==|[a-z0-9+\/]{3}=)?(?:\s.+?)?$/i</Mask>
-                    <ValidationMessage>Should be a valid public SSH host key (see "known_hosts").</ValidationMessage>
-                </jetkvm_host_key>
-                <jetkvm_port type="IntegerField">
-                    <Required>N</Required>
-                    <MinimumValue>1</MinimumValue>
-                    <MaximumValue>65535</MaximumValue>
-                    <Default>22</Default>
-                    <ValidationMessage>Should be a valid port number between 1 and 65535.</ValidationMessage>
-                </jetkvm_port>
-                <jetkvm_user type="TextField">
-                    <Required>N</Required>
-                    <Default>root</Default>
-                    <Mask>/^.{1,128}$/u</Mask>
-                    <ValidationMessage>Should be a string between 1 and 128 characters.</ValidationMessage>
-                </jetkvm_user>
-                <jetkvm_identity_type type="OptionField">
-                    <Required>N</Required>
-                    <OptionValues>
-                        <ecdsa>ECDSA</ecdsa>
-                        <rsa>RSA</rsa>
-                        <ed25519>ed25519</ed25519>
-                    </OptionValues>
-                </jetkvm_identity_type>
-                <jetkvm_remote_path type="TextField">
-                    <Required>N</Required>
-                    <Default>/userdata/jetkvm/tls</Default>
-                    <Mask>/^.{1,512}$/u</Mask>
-                    <ValidationMessage>Should be a string between 1 and 512 characters.</ValidationMessage>
-                </jetkvm_remote_path>
-                <jetkvm_filename_cert type="TextField">
-                    <Required>N</Required>
-                    <Default>user-defined.crt</Default>
-                    <Mask>/^[\w\d_\-@.]{1,255}$/ui</Mask>
-                    <ValidationMessage>Should be a plain filename (no path) between 1 and 255 characters.
-                                       Characters are limited to [a-z], [0-9] and [@._-].</ValidationMessage>
-                </jetkvm_filename_cert>
-                <jetkvm_filename_key type="TextField">
-                    <Required>N</Required>
-                    <Default>user-defined.key</Default>
-                    <Mask>/^[\w\d_\-@.]{1,255}$/ui</Mask>
-                    <ValidationMessage>Should be a plain filename (no path) between 1 and 255 characters.
-                                       Characters are limited to [a-z], [0-9] and [@._-].</ValidationMessage>
-                </jetkvm_filename_key>
-                <jetkvm_chmod_cert type="TextField">
-                    <Required>N</Required>
-                    <Mask>/^0[0-9]{3}$/u</Mask>
-                    <ValidationMessage>A unix permission, 4 digits (e.g. 0644).</ValidationMessage>
-                </jetkvm_chmod_cert>
-                <jetkvm_chmod_key type="TextField">
-                    <Required>N</Required>
-                    <Mask>/^0[0-9]{3}$/u</Mask>
-                    <ValidationMessage>A unix permission, 4 digits (e.g. 0600).</ValidationMessage>
-                </jetkvm_chmod_key>
-                <jetkvm_restart_command type="TextField">
-                    <Required>N</Required>
-                    <Default>reboot</Default>
-                    <Mask>/^.{0,1024}$/u</Mask>
-                    <ValidationMessage>Should be a shell command up to 1024 characters.</ValidationMessage>
-                </jetkvm_restart_command>
                 <!-- old value, should be removed in next major release -->
                 <configd type="ConfigdActionsField">
                     <filters>
@@ -1900,6 +1843,23 @@
                     <Default>0</Default>
                     <Required>N</Required>
                 </acme_zyxel_gs1900_reboot>
+                <acme_jetkvm_host type="HostnameField">
+                    <Required>N</Required>
+                    <Mask>/^.{1,1024}$/u</Mask>
+                    <ValidationMessage>Should be a string between 1 and 1024 characters.</ValidationMessage>
+                </acme_jetkvm_host>
+                <acme_jetkvm_user type="TextField">
+                    <Default>root</Default>
+                    <Required>N</Required>
+                </acme_jetkvm_user>
+                <acme_jetkvm_port type="TextField">
+                    <Default>22</Default>
+                    <Required>N</Required>
+                </acme_jetkvm_port>
+                <acme_jetkvm_reboot type="BooleanField">
+                    <Default>1</Default>
+                    <Required>N</Required>
+                </acme_jetkvm_reboot>
             </action>
         </actions>
     </items>

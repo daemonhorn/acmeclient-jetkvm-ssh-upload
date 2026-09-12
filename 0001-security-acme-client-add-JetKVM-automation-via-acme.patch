@@ -1,0 +1,232 @@
+From 9043168d0769827d2d796ee9cbf82e41e5d6d36c Mon Sep 17 00:00:00 2001
+From: daemonhorn <daemonhorn@nullcore.com>
+Date: Sat, 12 Sep 2026 12:59:09 -0400
+Subject: [PATCH] security/acme-client: add JetKVM automation via acme.sh
+ deploy hook
+
+Adds "Upload certificate to JetKVM (SSH)" (acme_jetkvm), a thin wrapper
+around the acme.sh "jetkvm" deploy hook (acmesh-official/acme.sh#7254),
+following the exact pattern already used by AcmeFritzbox/AcmePanos/
+AcmeZyxelGs1900/etc.: set a few DEPLOY_JETKVM_* env vars from the
+automation's config and let LeAutomation\Base::runAcme() invoke
+`acme.sh --deploy --deploy-hook jetkvm`.
+
+This is the "much smaller follow-up PR" requested by the maintainer on
+opnsense/plugins#5621 in place of that PR's full custom PHP
+implementation (own SSH exec session, own atomic-write logic, its own
+API controller/configd actions) -- all of that now lives once in the
+acme.sh hook instead of being duplicated here.
+
+Exposes only what a user needs to fill in: host, username (default
+root), port (default 22), and a "Reboot After Upload" checkbox (default
+checked) that maps to the hook's DEPLOY_JETKVM_RESTART_CMD ("reboot" or
+"none") -- narrower than the hook's own free-text restart command, kept
+consistent with AcmeZyxelGs1900's equivalent checkbox. Everything else
+(remote path, filenames, permissions, the HTTPS-mode precondition
+check) uses the hook's own defaults.
+
+Unlike the old SFTP/remote-SSH-style automations, this one does not use
+the plugin's own managed SSH identity/known_hosts store (no "Show
+Identity" button) -- acme.sh's own deploy hooks assume SSH access is
+already configured on the host, same as every other Acme* automation in
+this plugin. The firewall's own root SSH key needs to already be
+trusted by the JetKVM device.
+
+Field names cross-checked between the model, dialog, and PHP class;
+LeAutomationFactory's type-to-classname derivation confirmed to resolve
+"acme_jetkvm" to AcmeJetkvm; xmllint --noout clean on both changed XML
+files; php -l clean on the new class. BooleanField comparison for
+"Reboot After Upload" uses loose == 1, matching the house idiom already
+used by AcmeZyxelGs1900/AcmeVault for the same pattern.
+
+Validated end-to-end on a real OPNsense 26.7 box against a real JetKVM
+device: locally-built test packages (os-acme-client + acme.sh, each
+adding only the JetKVM-related file(s) on top of the currently
+published packages -- see pkg-test/ in the delivery repo) were
+installed so this automation could invoke a real deploy/jetkvm.sh.
+Confirmed working end to end: issuance -> this automation -> the
+acme.sh hook -> upload -> HTTPS-mode check -> reboot -> certificate
+served by the device. Not yet testable against a *stock* OPNsense
+install, since that still requires acmesh-official/acme.sh#7254 to
+merge and the FreeBSD acme.sh port to pick it up.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01M7rTpUF3btoBXSZ95Psjh7
+---
+ security/acme-client/Makefile                 |  2 +-
+ security/acme-client/pkg-descr                |  6 +++
+ .../AcmeClient/forms/dialogAction.xml         | 39 +++++++++++++++
+ .../AcmeClient/LeAutomation/AcmeJetkvm.php    | 48 +++++++++++++++++++
+ .../models/OPNsense/AcmeClient/AcmeClient.xml | 18 +++++++
+ 5 files changed, 112 insertions(+), 1 deletion(-)
+ create mode 100644 security/acme-client/src/opnsense/mvc/app/library/OPNsense/AcmeClient/LeAutomation/AcmeJetkvm.php
+
+diff --git a/security/acme-client/Makefile b/security/acme-client/Makefile
+index fd128f00f..962b693fa 100644
+--- a/security/acme-client/Makefile
++++ b/security/acme-client/Makefile
+@@ -1,5 +1,5 @@
+ PLUGIN_NAME=		acme-client
+-PLUGIN_VERSION=		4.17
++PLUGIN_VERSION=		4.18
+ PLUGIN_COMMENT=		ACME Client
+ PLUGIN_MAINTAINER=	opnsense@moov.de
+ PLUGIN_DEPENDS=		acme.sh py${PLUGIN_PYTHON}-dns-lexicon
+diff --git a/security/acme-client/pkg-descr b/security/acme-client/pkg-descr
+index d71d57a96..82fcf7604 100644
+--- a/security/acme-client/pkg-descr
++++ b/security/acme-client/pkg-descr
+@@ -8,6 +8,12 @@ WWW: https://github.com/acmesh-official/acme.sh
+ Plugin Changelog
+ ================
+ 
++4.18
++
++Added:
++* new automation to upload certificate to JetKVM via SSH, using the
++  acme.sh "jetkvm" deploy hook (#XXXX)
++
+ 4.17
+ 
+ Added:
+diff --git a/security/acme-client/src/opnsense/mvc/app/controllers/OPNsense/AcmeClient/forms/dialogAction.xml b/security/acme-client/src/opnsense/mvc/app/controllers/OPNsense/AcmeClient/forms/dialogAction.xml
+index b03e6f89c..f65dab852 100644
+--- a/security/acme-client/src/opnsense/mvc/app/controllers/OPNsense/AcmeClient/forms/dialogAction.xml
++++ b/security/acme-client/src/opnsense/mvc/app/controllers/OPNsense/AcmeClient/forms/dialogAction.xml
+@@ -515,4 +515,43 @@
+         <type>checkbox</type>
+         <help>If checked the switch will be rebooted once the certificate has been successfully installed.</help>
+     </field>
++    <field>
++        <label>Required Parameters</label>
++        <type>header</type>
++        <style>method_table method_table_acme_jetkvm</style>
++    </field>
++    <field>
++        <id>action.acme_jetkvm_host</id>
++        <label>JetKVM Host</label>
++        <type>text</type>
++        <help>IP address or hostname of the JetKVM device. Required first: the device must already have "HTTPS
++              Mode" set to "Custom" in its own web UI (Settings &gt; Network) -- this automation only writes the
++              certificate/key files (and optionally reboots); it does not switch HTTPS mode for you, and the
++              deploy will fail if it isn't already set (check the ACME Client log for the exact reason). Also
++              requires SSH access to already work non-interactively as the configured user (JetKVM only supports
++              key-based SSH authentication -- enable "Developer Mode" on the device and paste this firewall's SSH
++              public key, e.g. from /root/.ssh/id_rsa.pub, into its "SSH Keys" field under Settings &gt; Advanced).</help>
++    </field>
++    <field>
++        <id>action.acme_jetkvm_user</id>
++        <label>Username</label>
++        <type>text</type>
++        <help>The username to login to the JetKVM device via SSH. JetKVM only supports the "root" account for SSH
++              access. Defaults to "root".</help>
++    </field>
++    <field>
++        <id>action.acme_jetkvm_port</id>
++        <label>SSH Port</label>
++        <type>text</type>
++        <help>SSH server port on the JetKVM device. Defaults to "22".</help>
++    </field>
++    <field>
++        <id>action.acme_jetkvm_reboot</id>
++        <label>Reboot After Upload</label>
++        <type>checkbox</type>
++        <help>JetKVM does not hot-reload a new "Custom" certificate -- a full device reboot is required to apply
++              it, which briefly drops any active KVM-over-IP session. If checked (default), the device is
++              rebooted automatically right after the certificate is uploaded, so an unattended renewal actually
++              takes effect. Uncheck to upload only and apply/verify manually instead.</help>
++    </field>
+ </form>
+diff --git a/security/acme-client/src/opnsense/mvc/app/library/OPNsense/AcmeClient/LeAutomation/AcmeJetkvm.php b/security/acme-client/src/opnsense/mvc/app/library/OPNsense/AcmeClient/LeAutomation/AcmeJetkvm.php
+new file mode 100644
+index 000000000..f6a1ce2e3
+--- /dev/null
++++ b/security/acme-client/src/opnsense/mvc/app/library/OPNsense/AcmeClient/LeAutomation/AcmeJetkvm.php
+@@ -0,0 +1,48 @@
++<?php
++
++/*
++ * Copyright (C) 2026 daemonhorn
++ * All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions are met:
++ *
++ * 1. Redistributions of source code must retain the above copyright notice,
++ *    this list of conditions and the following disclaimer.
++ *
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES,
++ * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
++ * AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
++ * AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY,
++ * OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
++ * POSSIBILITY OF SUCH DAMAGE.
++ */
++
++namespace OPNsense\AcmeClient\LeAutomation;
++
++use OPNsense\AcmeClient\LeAutomationInterface;
++
++/**
++ * Run acme.sh deploy hook jetkvm
++ * @package OPNsense\AcmeClient
++ */
++class AcmeJetkvm extends Base implements LeAutomationInterface
++{
++    public function prepare()
++    {
++        $this->acme_env['DEPLOY_JETKVM_HOST'] = (string)$this->config->acme_jetkvm_host;
++        $this->acme_env['DEPLOY_JETKVM_USER'] = (string)$this->config->acme_jetkvm_user;
++        $this->acme_env['DEPLOY_JETKVM_PORT'] = (string)$this->config->acme_jetkvm_port;
++        $this->acme_env['DEPLOY_JETKVM_RESTART_CMD'] = ((string)$this->config->acme_jetkvm_reboot == 1) ? 'reboot' : 'none';
++        $this->acme_args[] = '--deploy-hook jetkvm';
++        return true;
++    }
++}
+diff --git a/security/acme-client/src/opnsense/mvc/app/models/OPNsense/AcmeClient/AcmeClient.xml b/security/acme-client/src/opnsense/mvc/app/models/OPNsense/AcmeClient/AcmeClient.xml
+index e98dacfb4..1438d8e39 100644
+--- a/security/acme-client/src/opnsense/mvc/app/models/OPNsense/AcmeClient/AcmeClient.xml
++++ b/security/acme-client/src/opnsense/mvc/app/models/OPNsense/AcmeClient/AcmeClient.xml
+@@ -1449,6 +1449,7 @@
+                         <acme_truenas_ws>Deprecated - Upload certificate to TrueNAS Server (midctl/websocket)</acme_truenas_ws>
+                         <acme_zyxel_gs1900>Upload certificate to Zyxel GS1900 series switches</acme_zyxel_gs1900>
+                         <acme_unifi>Update local Unifi keystore</acme_unifi>
++                        <acme_jetkvm>Upload certificate to JetKVM (SSH)</acme_jetkvm>
+                         <configd_generic>System or Plugin Command</configd_generic>
+                     </OptionValues>
+                 </type>
+@@ -1842,6 +1843,23 @@
+                     <Default>0</Default>
+                     <Required>N</Required>
+                 </acme_zyxel_gs1900_reboot>
++                <acme_jetkvm_host type="HostnameField">
++                    <Required>N</Required>
++                    <Mask>/^.{1,1024}$/u</Mask>
++                    <ValidationMessage>Should be a string between 1 and 1024 characters.</ValidationMessage>
++                </acme_jetkvm_host>
++                <acme_jetkvm_user type="TextField">
++                    <Default>root</Default>
++                    <Required>N</Required>
++                </acme_jetkvm_user>
++                <acme_jetkvm_port type="TextField">
++                    <Default>22</Default>
++                    <Required>N</Required>
++                </acme_jetkvm_port>
++                <acme_jetkvm_reboot type="BooleanField">
++                    <Default>1</Default>
++                    <Required>N</Required>
++                </acme_jetkvm_reboot>
+             </action>
+         </actions>
+     </items>
+-- 
+2.47.3
+
