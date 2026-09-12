@@ -80,18 +80,14 @@ the host, same as every other `Acme*` automation in this plugin.
   (device already in Custom mode, reboot enabled); the
   checkbox-unchecked → `none` path and the mode-check-failure path have
   not been run through the plugin itself.
+- `prepare()` now checks for an empty `acme_jetkvm_host` and fails the
+  automation with a clear log message instead of silently falling back
+  to the certificate's own domain name (matching `ConfigdGeneric`'s
+  existing precedent for this same situation). Added after the hardware
+  run above, so verified with `php -l` only, not against real hardware.
 - Not yet testable against a *stock* OPNsense install, since that still
   requires acme.sh#7254 to merge and the FreeBSD acme.sh port to pick it
   up.
-
-## Known open item
-
-`acme_jetkvm_host` has no required-field validation (`Required N`, no
-default) and `AcmeJetkvm.php` does not check for an empty host before
-invoking the hook. A blank host silently falls back to `jetkvm.sh`'s own
-default (the certificate's own domain name) rather than producing a
-clear configuration error. Worth deciding before merge whether to mark
-the field `Required Y`.
 
 ## How to use once merged
 

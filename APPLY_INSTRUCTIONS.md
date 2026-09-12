@@ -40,9 +40,6 @@ clone so that base history is actually present locally.
    (`#XXXX`) with the real PR number once GitHub assigns one.
 2. Open the PR against `opnsense/plugins` (base: `master`) using the
    title and body in `PR_DESCRIPTION.md`.
-3. Consider resolving the "Known open item" in `PR_DESCRIPTION.md`
-   (the `acme_jetkvm_host` required-field gap) before or shortly after
-   opening.
 
 ## Files in this delivery
 

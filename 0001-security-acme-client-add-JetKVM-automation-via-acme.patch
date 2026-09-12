@@ -1,4 +1,4 @@
-From 9043168d0769827d2d796ee9cbf82e41e5d6d36c Mon Sep 17 00:00:00 2001
+From 3e5d570a24b77720ffbecdf58b8f6df19977c95b Mon Sep 17 00:00:00 2001
 From: daemonhorn <daemonhorn@nullcore.com>
 Date: Sat, 12 Sep 2026 12:59:09 -0400
 Subject: [PATCH] security/acme-client: add JetKVM automation via acme.sh
@@ -39,6 +39,15 @@ files; php -l clean on the new class. BooleanField comparison for
 "Reboot After Upload" uses loose == 1, matching the house idiom already
 used by AcmeZyxelGs1900/AcmeVault for the same pattern.
 
+acme_jetkvm_host is Required N in the model, matching every other
+Acme*_host/url field in this plugin (acme_fritzbox_url, acme_panos_host,
+acme_zyxel_gs1900_host, etc. are all Required N too) -- so this doesn't
+deviate from house style. But unlike those, a blank JetKVM host isn't
+harmless: jetkvm.sh falls back to the certificate's own domain name as
+the SSH target, which will almost never be the device. prepare() now
+follows ConfigdGeneric's own precedent (check the field, log_error, and
+return false to stop the automation) rather than adding a new pattern.
+
 Validated end-to-end on a real OPNsense 26.7 box against a real JetKVM
 device: locally-built test packages (os-acme-client + acme.sh, each
 adding only the JetKVM-related file(s) on top of the currently
@@ -46,7 +55,9 @@ published packages -- see pkg-test/ in the delivery repo) were
 installed so this automation could invoke a real deploy/jetkvm.sh.
 Confirmed working end to end: issuance -> this automation -> the
 acme.sh hook -> upload -> HTTPS-mode check -> reboot -> certificate
-served by the device. Not yet testable against a *stock* OPNsense
+served by the device. That run predates the empty-host check added
+above, so the check itself has only been exercised with php -l, not
+against real hardware. Not yet testable against a *stock* OPNsense
 install, since that still requires acmesh-official/acme.sh#7254 to
 merge and the FreeBSD acme.sh port to pick it up.
 
@@ -54,11 +65,11 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01M7rTpUF3btoBXSZ95Psjh7
 ---
  security/acme-client/Makefile                 |  2 +-
- security/acme-client/pkg-descr                |  6 +++
- .../AcmeClient/forms/dialogAction.xml         | 39 +++++++++++++++
- .../AcmeClient/LeAutomation/AcmeJetkvm.php    | 48 +++++++++++++++++++
- .../models/OPNsense/AcmeClient/AcmeClient.xml | 18 +++++++
- 5 files changed, 112 insertions(+), 1 deletion(-)
+ security/acme-client/pkg-descr                |  6 ++
+ .../AcmeClient/forms/dialogAction.xml         | 39 +++++++++++++
+ .../AcmeClient/LeAutomation/AcmeJetkvm.php    | 57 +++++++++++++++++++
+ .../models/OPNsense/AcmeClient/AcmeClient.xml | 18 ++++++
+ 5 files changed, 121 insertions(+), 1 deletion(-)
  create mode 100644 security/acme-client/src/opnsense/mvc/app/library/OPNsense/AcmeClient/LeAutomation/AcmeJetkvm.php
 
 diff --git a/security/acme-client/Makefile b/security/acme-client/Makefile
@@ -139,10 +150,10 @@ index b03e6f89c..f65dab852 100644
  </form>
 diff --git a/security/acme-client/src/opnsense/mvc/app/library/OPNsense/AcmeClient/LeAutomation/AcmeJetkvm.php b/security/acme-client/src/opnsense/mvc/app/library/OPNsense/AcmeClient/LeAutomation/AcmeJetkvm.php
 new file mode 100644
-index 000000000..f6a1ce2e3
+index 000000000..c2fb62012
 --- /dev/null
 +++ b/security/acme-client/src/opnsense/mvc/app/library/OPNsense/AcmeClient/LeAutomation/AcmeJetkvm.php
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,57 @@
 +<?php
 +
 +/*
@@ -174,6 +185,7 @@ index 000000000..f6a1ce2e3
 +namespace OPNsense\AcmeClient\LeAutomation;
 +
 +use OPNsense\AcmeClient\LeAutomationInterface;
++use OPNsense\AcmeClient\LeUtils;
 +
 +/**
 + * Run acme.sh deploy hook jetkvm
@@ -183,6 +195,14 @@ index 000000000..f6a1ce2e3
 +{
 +    public function prepare()
 +    {
++        // Make sure a host was specified. Without one, the deploy hook
++        // would silently fall back to the certificate's own domain name
++        // as the SSH target instead of the JetKVM device.
++        if (empty((string)$this->config->acme_jetkvm_host)) {
++            LeUtils::log_error('no host specified for automation: ' . $this->config->name);
++            return false;
++        }
++
 +        $this->acme_env['DEPLOY_JETKVM_HOST'] = (string)$this->config->acme_jetkvm_host;
 +        $this->acme_env['DEPLOY_JETKVM_USER'] = (string)$this->config->acme_jetkvm_user;
 +        $this->acme_env['DEPLOY_JETKVM_PORT'] = (string)$this->config->acme_jetkvm_port;

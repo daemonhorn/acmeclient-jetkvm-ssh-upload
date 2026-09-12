@@ -98,7 +98,8 @@ Firmware > Plugins** to restore the stock files.
 - **Required on the JetKVM device itself:** "HTTPS Mode" must already
   be set to "Custom" under Settings > Network before this automation's
   uploads take effect.
-- `acme_jetkvm_host` currently has no required-field validation — see
-  "Known open item" in `PR_DESCRIPTION.md`. Leaving it blank will not
-  produce a form error; the deploy hook will instead fall back to the
-  certificate's own domain name as the SSH target.
+- Leaving "JetKVM Host" blank does not produce a form error (the field
+  is `Required N`, consistent with every other host/URL field in this
+  plugin) — but `prepare()` now catches it and fails the automation
+  with a clear log message, rather than letting the deploy hook fall
+  back to the certificate's own domain name as the SSH target.
