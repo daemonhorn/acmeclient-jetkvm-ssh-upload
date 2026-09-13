@@ -80,11 +80,14 @@ the host, same as every other `Acme*` automation in this plugin.
   (device already in Custom mode, reboot enabled); the
   checkbox-unchecked → `none` path and the mode-check-failure path have
   not been run through the plugin itself.
-- `prepare()` now checks for an empty `acme_jetkvm_host` and fails the
-  automation with a clear log message instead of silently falling back
-  to the certificate's own domain name (matching `ConfigdGeneric`'s
-  existing precedent for this same situation). Added after the hardware
-  run above, so verified with `php -l` only, not against real hardware.
+- A blank "JetKVM Host" is deliberately not guarded against: `prepare()`
+  passes it through unchanged, letting `jetkvm.sh` fall back to the
+  certificate's own domain name (documented behavior of the hook),
+  same as `AcmeZyxelGs1900`/`zyxel_gs1900.sh`'s equivalent field. A
+  wrong fallback surfaces a real SSH connection error in the ACME
+  Client log rather than failing silently. (An earlier revision of this
+  automation added an explicit empty-host guard here; removed to match
+  the Zyxel precedent instead of introducing a one-off pattern.)
 - Not yet testable against a *stock* OPNsense install, since that still
   requires acme.sh#7254 to merge and the FreeBSD acme.sh port to pick it
   up.

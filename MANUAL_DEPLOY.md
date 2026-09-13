@@ -100,6 +100,7 @@ Firmware > Plugins** to restore the stock files.
   uploads take effect.
 - Leaving "JetKVM Host" blank does not produce a form error (the field
   is `Required N`, consistent with every other host/URL field in this
-  plugin) — but `prepare()` now catches it and fails the automation
-  with a clear log message, rather than letting the deploy hook fall
-  back to the certificate's own domain name as the SSH target.
+  plugin). The deploy hook falls back to the certificate's own domain
+  name as the SSH target in that case — almost never what you want, but
+  not silent: the resulting SSH connection failure shows up in the ACME
+  Client log.

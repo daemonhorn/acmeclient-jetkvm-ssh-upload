@@ -29,7 +29,6 @@
 namespace OPNsense\AcmeClient\LeAutomation;
 
 use OPNsense\AcmeClient\LeAutomationInterface;
-use OPNsense\AcmeClient\LeUtils;
 
 /**
  * Run acme.sh deploy hook jetkvm
@@ -39,14 +38,11 @@ class AcmeJetkvm extends Base implements LeAutomationInterface
 {
     public function prepare()
     {
-        // Make sure a host was specified. Without one, the deploy hook
-        // would silently fall back to the certificate's own domain name
-        // as the SSH target instead of the JetKVM device.
-        if (empty((string)$this->config->acme_jetkvm_host)) {
-            LeUtils::log_error('no host specified for automation: ' . $this->config->name);
-            return false;
-        }
-
+        // No empty-host guard here: jetkvm.sh itself falls back to the
+        // certificate's own domain when DEPLOY_JETKVM_HOST is unset,
+        // same as AcmeZyxelGs1900/zyxel_gs1900.sh's DEPLOY_ZYXEL_SWITCH.
+        // A wrong fallback still surfaces a real (if less friendly) SSH
+        // connection error in the ACME Client log.
         $this->acme_env['DEPLOY_JETKVM_HOST'] = (string)$this->config->acme_jetkvm_host;
         $this->acme_env['DEPLOY_JETKVM_USER'] = (string)$this->config->acme_jetkvm_user;
         $this->acme_env['DEPLOY_JETKVM_PORT'] = (string)$this->config->acme_jetkvm_port;
